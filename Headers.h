@@ -3,12 +3,13 @@
 
 #define ETH_ADDR_LEN 6
 #define IPV4_ADDR_LEN 4
+#define ETH_HDR_LEN 14
 
 extern u_int8_t BROADCAST_MAC[ETH_ADDR_LEN];
 extern u_int8_t NULL_MAC[ETH_ADDR_LEN];
 
 
-#pragma pack(1)
+#pragma pack(push, 1)
 //Ethernet Header
 struct ethHdr
 {
@@ -56,8 +57,25 @@ struct arpHdr
     };
 };
 
+//IPv4 Header
+struct ipv4Hdr
+{
+    u_int8_t versionAndIhl;
+    u_int8_t dscpAndEcn;
+    u_int16_t totalLen;
+    u_int16_t identification;
+    u_int16_t flagsAndOffset;
+    u_int8_t ttl;
+    u_int8_t protocol;
+    u_int16_t checksum;
+    u_int32_t srcIp;
+    u_int32_t dstIp;
+};
+
 //Ethernet and ARP Heaeder for ARP Packet
 struct ethArpHdr {
     struct ethHdr eth;
     struct arpHdr arp;
 };
+
+#pragma pack(pop)

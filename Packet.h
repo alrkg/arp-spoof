@@ -15,10 +15,23 @@
 #include <vector>
 
 #pragma pack(push, 1)
-struct packetInfo{
+struct packetInfo
+{
     struct pcap_pkthdr* header;
     const u_char* packet;
     int status; //
+};
+
+struct IpMacPair
+{
+    u_int32_t ip;
+    u_int8_t mac[ETH_ADDR_LEN];
+};
+
+struct SenderTargetPair
+{
+    IpMacPair sender;
+    IpMacPair target;
 };
 #pragma pack(pop)
 
@@ -30,9 +43,10 @@ private:
     pcap_t* pcap;
     u_int8_t interfaceMac[ETH_ADDR_LEN];
     u_int32_t interfaceIp;
-    ethArpHdr ethArpPacket;
+    ethArpHdr ethArpPacket;    // -> cancel
     u_int8_t senderMac[ETH_ADDR_LEN];
-    std::map<u_int32_t, std::array<u_int8_t, ETH_ADDR_LEN>> arpTable;
+    std::map<u_int32_t, u_int8_t[ETH_ADDR_LEN]> arpTable;
+    std::vector<SenderTargetPair> senderTargetTable;  // Need to remove duplicates
     bool setMyInterfaceMac();
     bool setMyInterfaceIp();
 
@@ -47,6 +61,9 @@ public:
     void sendPacket();
     packetInfo captureNextPacket();
     void resolveMacByIp(u_int32_t ip);
+    void resolveMacByIpforSpoof(u_int32_t senderIp, u_int32_t targetIp);
+    void sendSpoofedPacket(u_int32_t senderIp, u_int32_t targetIp, u_int16_t opCode);
+    void continuousArpSpoofing();
     void closeLiveCapture();
 };
 
