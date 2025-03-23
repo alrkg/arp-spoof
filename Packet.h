@@ -43,7 +43,11 @@ private:
     pcap_t* pcap;
     u_int8_t interfaceMac[ETH_ADDR_LEN];
     u_int32_t interfaceIp;
-    ethArpHdr ethArpPacket;    // -> cancel
+    ethHdr ethHeader;
+    arpHdr arpHeader;
+    ipv4Hdr Ipv4Header;
+    ethArpHdr ethArpHeader;
+    ethIpv4Hdr ethIpv4Header;
     u_int8_t senderMac[ETH_ADDR_LEN];
     std::map<u_int32_t, u_int8_t[ETH_ADDR_LEN]> arpTable;
     std::vector<SenderTargetPair> senderTargetTable;  // Need to remove duplicates
@@ -59,6 +63,7 @@ public:
     void setEthHeader(u_int8_t* srcMac, u_int8_t* dstMac, u_int16_t ethType);
     void setArpHeader(u_int8_t* srcMac, u_int32_t srcIp, u_int8_t* dstMac, u_int32_t dstIp, u_int16_t opCode);
     void sendPacket();
+    void sendPacket(u_char* packet);
     packetInfo captureNextPacket();
     void resolveMacByIp(u_int32_t ip);
     void resolveMacByIpforSpoof(u_int32_t senderIp, u_int32_t targetIp);

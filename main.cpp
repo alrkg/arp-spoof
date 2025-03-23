@@ -29,7 +29,7 @@ int main(int argc, char* argv[])
     }
 
     //Continuously re-infect the sender's ARP table when an ARP packet updates it
-
+    packet.continuousArpSpoofing();
 
     //Close the live capture session
     packet.closeLiveCapture();

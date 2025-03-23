@@ -73,9 +73,18 @@ struct ipv4Hdr
 };
 
 //Ethernet and ARP Heaeder for ARP Packet
-struct ethArpHdr {
+struct ethArpHdr
+{
     struct ethHdr eth;
     struct arpHdr arp;
+};
+
+
+//Ethernet and IPv4 Heaeder for Relay Packet
+struct ethIpv4Hdr
+{
+    struct ethHdr eth;
+    struct ipv4Hdr ipv4;
 };
 
 #pragma pack(pop)

