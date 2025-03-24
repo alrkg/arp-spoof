@@ -19,7 +19,7 @@ struct packetInfo
 {
     struct pcap_pkthdr* header;
     const u_char* packet;
-    int status; //
+    int status; //Return value of captureNextPacket()
 };
 
 struct IpMacPair
@@ -39,36 +39,54 @@ class Packet
 {
 
 private:
-    char* dev;  // Interface Dev (eth0, wlan0...)
-    pcap_t* pcap;
+    pcap_t* pcap; //Packet Caputre Handle
+    char* dev; //Interface Dev (eth0, wlan0...)
+
+    //Interface Info
     u_int8_t interfaceMac[ETH_ADDR_LEN];
     u_int32_t interfaceIp;
+    bool setMyInterfaceMac();
+    bool setMyInterfaceIp();
+
+    //Headers
     ethHdr ethHeader;
     arpHdr arpHeader;
     ipv4Hdr Ipv4Header;
     ethArpHdr ethArpHeader;
     ethIpv4Hdr ethIpv4Header;
-    u_int8_t senderMac[ETH_ADDR_LEN];
+
+    //arpTables
     std::map<u_int32_t, u_int8_t[ETH_ADDR_LEN]> arpTable;
     std::vector<SenderTargetPair> senderTargetTable;  // Need to remove duplicates
-    bool setMyInterfaceMac();
-    bool setMyInterfaceIp();
 
 public:
+    //Setting
     void setDev(char* device){ dev = device; }
-    u_int8_t* getInterfaceMac(){ return interfaceMac; }
-    u_int32_t getInterfaceIp(){ return interfaceIp; }
-    bool openLiveCapture();
     bool setMyInterfaceInfo();
+
+    //Open
+    bool openLiveCapture();
+
+    //SetHeader
     void setEthHeader(u_int8_t* srcMac, u_int8_t* dstMac, u_int16_t ethType);
     void setArpHeader(u_int8_t* srcMac, u_int32_t srcIp, u_int8_t* dstMac, u_int32_t dstIp, u_int16_t opCode);
-    void sendPacket();
-    void sendPacket(u_char* packet);
+
+    //SendPacket
+    void sendPacket(); //Insert the configured header into the packet and send it (header configuration required!!)
+    void sendPacket(const u_char* packet); //Send the entire packet as an argument
+
+    //CapturePacket
     packetInfo captureNextPacket();
+
+    //ResolveMac
     void resolveMacByIp(u_int32_t ip);
     void resolveMacByIpforSpoof(u_int32_t senderIp, u_int32_t targetIp);
+
+    //Spoofing
     void sendSpoofedPacket(u_int32_t senderIp, u_int32_t targetIp, u_int16_t opCode);
     void continuousArpSpoofing();
-    void closeLiveCapture();
+
+    //Close
+    void closeLiveCapture(){ pcap_close(pcap); }
 };
 

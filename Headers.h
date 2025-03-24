@@ -8,7 +8,6 @@
 extern u_int8_t BROADCAST_MAC[ETH_ADDR_LEN];
 extern u_int8_t NULL_MAC[ETH_ADDR_LEN];
 
-
 #pragma pack(push, 1)
 //Ethernet Header
 struct ethHdr
