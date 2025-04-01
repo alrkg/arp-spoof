@@ -7,7 +7,7 @@ int main(int argc, char* argv[])
 {
     Packet packet;
 
-    if (!parse(argc, argv)) return EXIT_FAILURE; //Validate IP format
+    if (!ArgParser::parse(argc, argv)) return EXIT_FAILURE; //Validate IP format
     packet.setDev(argv[1]); //Set network interface
     if(!packet.setMyInterfaceInfo()) return EXIT_FAILURE; //Set interface info (IP & MAC)
     if(!packet.openLiveCapture()) return EXIT_FAILURE; //Open interface and init capture

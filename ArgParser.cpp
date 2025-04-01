@@ -1,6 +1,6 @@
 #include "ArgParser.h"
 
-bool parse(int argc, char* argv[]){
+bool ArgParser::parse(int argc, char* argv[]){
     if (argc < 4 && argc % 2 != 0) {
         printf("syntax : send-arp <interface> <sender ip> <target ip>\n");
         printf("sample : send-arp wlan0 192.168.10.2 192.168.10.1\n");
@@ -15,5 +15,3 @@ bool parse(int argc, char* argv[]){
     }
     return true;
 }
-
-

@@ -1,4 +1,8 @@
 #pragma once
 #include "Packet.h"
 
-bool parse(int argc, char* argv[]);
+class ArgParser{
+
+public:
+    static bool parse(int argc, char* argv[]);
+};

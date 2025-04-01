@@ -13,6 +13,8 @@
 #include <map>
 #include <array>
 #include <vector>
+#include <time.h>
+
 
 #pragma pack(push, 1)
 struct packetInfo
@@ -45,8 +47,7 @@ private:
     //Interface Info
     u_int8_t interfaceMac[ETH_ADDR_LEN];
     u_int32_t interfaceIp;
-    bool setMyInterfaceMac();
-    bool setMyInterfaceIp();
+    u_int32_t interfaceSubnetMask;
 
     //Headers
     ethHdr ethHeader;
@@ -73,7 +74,7 @@ public:
 
     //SendPacket
     void sendPacket(); //Insert the configured header into the packet and send it (header configuration required!!)
-    void sendPacket(const u_char* packet); //Send the entire packet as an argument
+    void sendPacket(const u_char* packet, u_int32_t packetLength); //Send the entire packet as an argument
 
     //CapturePacket
     packetInfo captureNextPacket();
